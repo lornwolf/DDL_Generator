@@ -165,11 +165,11 @@ Sub ExecuteDDLGeneration()
                     
                     Dim pkMark As String
                     pkMark = Trim(CStr(ws.Cells(i, 2).Value))
-                    If pkMark <> "" And pkMark <> "PK" Then
+                    If pkMark <> "" And pkMark <> "PK" And Left(pkMark, 1) <> "P" Then
                         warningMsg = warningMsg & "ファイル " & file.Name & " の" & i & "行目のB列に無効な値 '" & pkMark & "' が含まれています。無視しました！" & vbCrLf
                         pkMark = ""
                     End If
-                    isPK = (pkMark = "PK")
+                    isPK = (pkMark = "PK" Or Left(pkMark, 1) = "P")
                     
                     Dim nullMark As String
                     nullMark = Trim(CStr(ws.Cells(i, 3).Value))
