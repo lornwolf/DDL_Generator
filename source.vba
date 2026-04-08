@@ -345,6 +345,8 @@ Function ConvertToMySQLType(fieldType As String) As String
             ConvertToMySQLType = "TIME"
         Case "blob", "binary", "varbinary"
             ConvertToMySQLType = "BLOB"
+        Case "longblob"
+            ConvertToMySQLType = "LONGBLOB"
         Case "bit"
             ConvertToMySQLType = "BIT"
         Case "boolean", "bool"
