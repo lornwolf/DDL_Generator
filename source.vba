@@ -240,6 +240,10 @@ Sub ExecuteDDLGeneration()
                     
                     ddlContent = ddlContent & "    " & fieldId & " " & mysqlType & " " & nullStr
                     
+                    If fieldName <> "" Then
+                        ddlContent = ddlContent & " COMMENT '" & Replace(fieldName, "'", "''") & "'"
+                    End If
+                    
                     If isPK Then
                         If primaryKeys <> "" Then
                             primaryKeys = primaryKeys & ", "
@@ -256,7 +260,7 @@ Sub ExecuteDDLGeneration()
                     ddlContent = ddlContent & "    PRIMARY KEY (" & primaryKeys & ")" & vbCrLf
                 End If
                 
-                ddlContent = ddlContent & ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;" & vbCrLf & vbCrLf
+                ddlContent = ddlContent & ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='" & Replace(tableName, "'", "''") & "';" & vbCrLf & vbCrLf
             Else
                 warningMsg = warningMsg & "ファイル " & file.Name & " はSheetが1つしかないため、スキップしました！" & vbCrLf
             End If
