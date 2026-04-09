@@ -72,6 +72,8 @@ Sub ExecuteDDLGeneration()
     Dim nullStr As String
     Dim primaryKeys As String
     Dim sqlType As String
+    Dim singleDdl As String
+    Dim singleDdlFolder As String
     
     Set fso = CreateObject("Scripting.FileSystemObject")
     warningMsg = ""
@@ -130,6 +132,11 @@ Sub ExecuteDDLGeneration()
     
     On Error Resume Next
     
+    singleDdlFolder = outputFolder & "\CREATE文（テーブル単位）"
+    If Not fso.FolderExists(singleDdlFolder) Then
+        fso.CreateFolder singleDdlFolder
+    End If
+    
     For Each file In files
         If LCase(fso.GetExtensionName(file.Name)) = "xls" Or LCase(fso.GetExtensionName(file.Name)) = "xlsx" Then
             fileCount = fileCount + 1
@@ -151,6 +158,9 @@ Sub ExecuteDDLGeneration()
                 ddlContent = ddlContent & "-- Table: " & tableId & " (" & tableName & ")" & vbCrLf
                 ddlContent = ddlContent & "DROP TABLE IF EXISTS " & tableId & ";" & vbCrLf
                 ddlContent = ddlContent & "CREATE TABLE " & tableId & " (" & vbCrLf
+                
+                singleDdl = "-- Table: " & tableId & " (" & tableName & ")" & vbCrLf
+                singleDdl = singleDdl & "CREATE TABLE " & tableId & " (" & vbCrLf
                 
                 primaryKeys = ""
                 i = 6
@@ -244,6 +254,12 @@ Sub ExecuteDDLGeneration()
                         ddlContent = ddlContent & " COMMENT '" & Replace(fieldName, "'", "''") & "'"
                     End If
                     
+                    singleDdl = singleDdl & "    " & fieldId & " " & mysqlType & " " & nullStr
+                    
+                    If fieldName <> "" Then
+                        singleDdl = singleDdl & " COMMENT '" & Replace(fieldName, "'", "''") & "'"
+                    End If
+                    
                     If isPK Then
                         If primaryKeys <> "" Then
                             primaryKeys = primaryKeys & ", "
@@ -252,15 +268,23 @@ Sub ExecuteDDLGeneration()
                     End If
                     
                     ddlContent = ddlContent & "," & vbCrLf
+                    singleDdl = singleDdl & "," & vbCrLf
                     
                     i = i + 1
                 Loop
                 
                 If primaryKeys <> "" Then
                     ddlContent = ddlContent & "    PRIMARY KEY (" & primaryKeys & ")" & vbCrLf
+                    singleDdl = singleDdl & "    PRIMARY KEY (" & primaryKeys & ")" & vbCrLf
                 End If
                 
                 ddlContent = ddlContent & ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='" & Replace(tableName, "'", "''") & "';" & vbCrLf & vbCrLf
+                singleDdl = singleDdl & ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='" & Replace(tableName, "'", "''") & "';" & vbCrLf
+                
+                Dim singleFile As Object
+                Set singleFile = fso.CreateTextFile(singleDdlFolder & "\" & tableId & ".sql", True, True)
+                singleFile.Write singleDdl
+                singleFile.Close
             Else
                 warningMsg = warningMsg & "ファイル " & file.Name & " はSheetが1つしかないため、スキップしました！" & vbCrLf
             End If
@@ -278,7 +302,7 @@ NextFile:
     
     If ddlContent <> "" Then
         Dim ddlFile As Object
-        Set ddlFile = fso.CreateTextFile(outputFolder & "\DDL.sql", True, True)
+        Set ddlFile = fso.CreateTextFile(outputFolder & "\CREATE文.sql", True, True)
         ddlFile.Write ddlContent
         ddlFile.Close
     End If
