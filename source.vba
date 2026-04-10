@@ -282,7 +282,7 @@ Sub ExecuteDDLGeneration()
                 singleDdl = singleDdl & ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='" & Replace(tableName, "'", "''") & "';" & vbCrLf
                 
                 Dim singleFile As Object
-                Set singleFile = fso.CreateTextFile(singleDdlFolder & "\" & tableId & ".sql", True, True)
+                Set singleFile = fso.CreateTextFile(singleDdlFolder & "\" & tableId & "_" & tableName & ".sql", True, True)
                 singleFile.Write singleDdl
                 singleFile.Close
             Else
