@@ -162,6 +162,10 @@ Sub ExecuteDDLGeneration()
                 singleDdl = "-- Table: " & tableId & " (" & tableName & ")" & vbCrLf
                 singleDdl = singleDdl & "CREATE TABLE " & tableId & " (" & vbCrLf
                 
+                ' K5に「AUTO_INCREMENT」ヘッダーが設定されているか確認
+                Dim hasAutoIncrementCol As Boolean
+                hasAutoIncrementCol = (UCase(Trim(CStr(ws.Cells(5, 11).Value))) = "AUTO_INCREMENT")
+
                 primaryKeys = ""
                 i = 6
                 
@@ -188,7 +192,20 @@ Sub ExecuteDDLGeneration()
                         nullMark = ""
                     End If
                     isNullable = (nullMark = "Y")
-                    
+
+                    ' K列のAUTO_INCREMENT判定（K5に「AUTO_INCREMENT」がある場合のみ）
+                    Dim isAutoIncrement As Boolean
+                    isAutoIncrement = False
+                    If hasAutoIncrementCol Then
+                        Dim aiMark As String
+                        aiMark = Trim(CStr(ws.Cells(i, 11).Value))
+                        If aiMark <> "" And aiMark <> "〇" Then
+                            warningMsg = warningMsg & "ファイル " & file.Name & " の" & i & "行目のK列に無効な値 '" & aiMark & "' が含まれています。無視しました！" & vbCrLf
+                            aiMark = ""
+                        End If
+                        isAutoIncrement = (aiMark = "〇")
+                    End If
+
                     If fieldName = "" Then
                         errorMsg = errorMsg & "ファイル " & file.Name & " の" & i & "行目のフィールド名が空です。処理中止！" & vbCrLf
                         Workbook.Close False
@@ -213,7 +230,18 @@ Sub ExecuteDDLGeneration()
                         Workbook.Close False
                         GoTo NextFile
                     End If
-                    
+
+                    ' DATETIME(n) パターン検出：F列に括弧付きで指定された場合、nを抽出
+                    Dim datetimePrecisionFromType As String
+                    datetimePrecisionFromType = ""
+                    Dim fieldTypeLower As String
+                    fieldTypeLower = LCase(fieldType)
+                    If Len(fieldTypeLower) >= 10 And Left(fieldTypeLower, 9) = "datetime(" And Right(fieldTypeLower, 1) = ")" Then
+                        datetimePrecisionFromType = Trim(Mid(fieldType, 10, Len(fieldType) - 10))
+                        If datetimePrecisionFromType = "" Then datetimePrecisionFromType = "0"
+                        fieldType = "DATETIME"
+                    End If
+
                     sqlType = ConvertToMySQLType(fieldType)
                     If sqlType = "" Then
                         errorMsg = errorMsg & "ファイル " & file.Name & " の" & i & "行目のフィールドタイプ '" & fieldType & "' はMySQLでサポートされていません。処理中止！" & vbCrLf
@@ -222,11 +250,30 @@ Sub ExecuteDDLGeneration()
                     End If
                     
                     fieldLen = Trim(CStr(ws.Cells(i, 7).Value))
-                    If fieldLen <> "" Then
+                    If sqlType = "DATETIME" Then
+                        ' DATETIME(n) が指定された場合、F列のnを使用しG列は無視する
+                        If datetimePrecisionFromType <> "" Then
+                            fieldLen = datetimePrecisionFromType
+                        End If
+                        ' 0～6以外（非数値含む）は0として処理
+                        Dim dtPrecision As Integer
                         If Not IsNumeric(fieldLen) Then
-                            errorMsg = errorMsg & "ファイル " & file.Name & " の" & i & "行目のフィールド長が有効数字ではありません。処理中止！" & vbCrLf
-                            Workbook.Close False
-                            GoTo NextFile
+                            fieldLen = "0"
+                        Else
+                            dtPrecision = CInt(fieldLen)
+                            If dtPrecision < 0 Or dtPrecision > 6 Then
+                                fieldLen = "0"
+                            Else
+                                fieldLen = CStr(dtPrecision)
+                            End If
+                        End If
+                    Else
+                        If fieldLen <> "" Then
+                            If Not IsNumeric(fieldLen) Then
+                                errorMsg = errorMsg & "ファイル " & file.Name & " の" & i & "行目のフィールド長が有効数字ではありません。処理中止！" & vbCrLf
+                                Workbook.Close False
+                                GoTo NextFile
+                            End If
                         End If
                     End If
                     
@@ -241,21 +288,31 @@ Sub ExecuteDDLGeneration()
                     
                     Dim mysqlType As String
                     mysqlType = BuildMySQLType(sqlType, fieldLen, fieldDec)
-                    
-                    If isNullable Then
-                        nullStr = "NULL"
+
+                    Dim columnTypeStr As String
+                    Dim columnConstraints As String
+                    If isAutoIncrement Then
+                        ' AUTO_INCREMENTはUNSIGNED NOT NULLを強制
+                        columnTypeStr = mysqlType & " UNSIGNED"
+                        columnConstraints = "NOT NULL AUTO_INCREMENT"
                     Else
-                        nullStr = "NOT NULL"
+                        columnTypeStr = mysqlType
+                        If isNullable Then
+                            nullStr = "NULL"
+                        Else
+                            nullStr = "NOT NULL"
+                        End If
+                        columnConstraints = nullStr
                     End If
-                    
-                    ddlContent = ddlContent & "    " & fieldId & " " & mysqlType & " " & nullStr
-                    
+
+                    ddlContent = ddlContent & "    " & fieldId & " " & columnTypeStr & " " & columnConstraints
+
                     If fieldName <> "" Then
                         ddlContent = ddlContent & " COMMENT '" & Replace(fieldName, "'", "''") & "'"
                     End If
-                    
-                    singleDdl = singleDdl & "    " & fieldId & " " & mysqlType & " " & nullStr
-                    
+
+                    singleDdl = singleDdl & "    " & fieldId & " " & columnTypeStr & " " & columnConstraints
+
                     If fieldName <> "" Then
                         singleDdl = singleDdl & " COMMENT '" & Replace(fieldName, "'", "''") & "'"
                     End If
@@ -406,6 +463,12 @@ Function BuildMySQLType(sqlType As String, fieldLen As String, fieldDec As Strin
             BuildMySQLType = sqlType & "(" & fieldLen & ")"
         Else
             BuildMySQLType = sqlType & "(1)"
+        End If
+    ElseIf sqlType = "DATETIME" Then
+        If fieldLen <> "" And fieldLen <> "0" Then
+            BuildMySQLType = sqlType & "(" & fieldLen & ")"
+        Else
+            BuildMySQLType = sqlType
         End If
     End If
 End Function
