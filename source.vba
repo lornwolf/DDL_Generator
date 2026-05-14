@@ -154,12 +154,22 @@ Sub ExecuteDDLGeneration()
                     Workbook.Close False
                     GoTo NextFile
                 End If
-                
+
+                'Excel SHA-256 ハッシュを計算（差分判定用ヘッダー）
+                Dim sourceHash As String
+                Dim generatedAt As String
+                sourceHash = GetFileSHA256(file.path)
+                generatedAt = Format(Now, "yyyy-mm-dd")
+
                 ddlContent = ddlContent & "-- Table: " & tableId & " (" & tableName & ")" & vbCrLf
                 ddlContent = ddlContent & "DROP TABLE IF EXISTS " & tableId & ";" & vbCrLf
                 ddlContent = ddlContent & "CREATE TABLE " & tableId & " (" & vbCrLf
                 
-                singleDdl = "-- Table: " & tableId & " (" & tableName & ")" & vbCrLf
+                '単体DDLファイルには差分判定用ヘッダーを追加
+                singleDdl = "-- @source-hash: " & sourceHash & vbCrLf
+                singleDdl = singleDdl & "-- @generated-at: " & generatedAt & vbCrLf
+                singleDdl = singleDdl & "-- Table: " & tableId & " (" & tableName & ")" & vbCrLf
+                singleDdl = singleDdl & "DROP TABLE IF EXISTS " & tableId & ";" & vbCrLf
                 singleDdl = singleDdl & "CREATE TABLE " & tableId & " (" & vbCrLf
                 
                 ' K5に「AUTO_INCREMENT」ヘッダーが設定されているか確認
@@ -473,16 +483,66 @@ Function BuildMySQLType(sqlType As String, fieldLen As String, fieldDec As Strin
     End If
 End Function
 
-Private Sub Label1_Click()
+' ファイルのSHA-256ハッシュを計算する（Windows標準のcertutilを利用）
+' 戻り値: 64文字の小文字16進文字列（失敗時は空文字列）
+' Node.js の crypto.createHash('sha256') と同じ結果を返すため、生成ツール間で互換性あり
+Function GetFileSHA256(filePath As String) As String
+    Dim shell As Object
+    Dim exec As Object
+    Dim output As String
+    Dim lines() As String
+    Dim hashLine As String
+    Dim i As Integer
 
-End Sub
+    GetFileSHA256 = ""
 
+    On Error GoTo ErrHandler
 
+    Set shell = CreateObject("WScript.Shell")
+    Set exec = shell.exec("cmd /c certutil -hashfile """ & filePath & """ SHA256")
 
-Private Sub Input_Label_Click()
+    ' プロセス完了を待つ
+    Do While exec.Status = 0
+        DoEvents
+    Loop
 
-End Sub
+    output = exec.StdOut.ReadAll()
 
-Private Sub Output_Label_Click()
+    ' certutil の出力例:
+    '   SHA256 ハッシュ (ファイル <path>):
+    '   8c4d89ceae943a7f1c48337640e918c982bc29643e3266bd02499cc7e182ac0c
+    '   CertUtil: -hashfile コマンドは正常に完了しました。
+    ' 2行目（インデックス1）がハッシュ
+    lines = Split(output, vbCrLf)
 
-End Sub
+    For i = 0 To UBound(lines)
+        hashLine = Trim(lines(i))
+        ' 16進文字のみで構成された64文字の行を探す（環境差吸収）
+        If Len(Replace(hashLine, " ", "")) = 64 Then
+            If IsHexString(Replace(hashLine, " ", "")) Then
+                GetFileSHA256 = LCase(Replace(hashLine, " ", ""))
+                Exit Function
+            End If
+        End If
+    Next i
+
+    Exit Function
+
+ErrHandler:
+    GetFileSHA256 = ""
+End Function
+
+' 文字列が16進数のみで構成されているか判定する
+Function IsHexString(s As String) As Boolean
+    Dim i As Integer
+    Dim c As String
+    IsHexString = False
+    If Len(s) = 0 Then Exit Function
+    For i = 1 To Len(s)
+        c = LCase(Mid(s, i, 1))
+        If Not ((c >= "0" And c <= "9") Or (c >= "a" And c <= "f")) Then
+            Exit Function
+        End If
+    Next i
+    IsHexString = True
+End Function
