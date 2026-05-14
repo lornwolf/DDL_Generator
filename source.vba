@@ -348,10 +348,7 @@ Sub ExecuteDDLGeneration()
                 ddlContent = ddlContent & ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='" & Replace(tableName, "'", "''") & "';" & vbCrLf & vbCrLf
                 singleDdl = singleDdl & ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='" & Replace(tableName, "'", "''") & "';" & vbCrLf
                 
-                Dim singleFile As Object
-                Set singleFile = fso.CreateTextFile(singleDdlFolder & "\" & tableId & "_" & tableName & ".sql", True, True)
-                singleFile.Write singleDdl
-                singleFile.Close
+                Call WriteUtf8NoBom(singleDdlFolder & "\" & tableId & "_" & tableName & ".sql", singleDdl)
             Else
                 warningMsg = warningMsg & "ファイル " & file.Name & " はSheetが1つしかないため、スキップしました！" & vbCrLf
             End If
@@ -368,24 +365,15 @@ NextFile:
     Set excelApp = Nothing
     
     If ddlContent <> "" Then
-        Dim ddlFile As Object
-        Set ddlFile = fso.CreateTextFile(outputFolder & "\CREATE文.sql", True, True)
-        ddlFile.Write ddlContent
-        ddlFile.Close
+        Call WriteUtf8NoBom(outputFolder & "\CREATE文.sql", ddlContent)
     End If
-    
+
     If warningMsg <> "" Then
-        Dim warnFile As Object
-        Set warnFile = fso.CreateTextFile(outputFolder & "\WARN.log", True, True)
-        warnFile.Write warningMsg
-        warnFile.Close
+        Call WriteUtf8NoBom(outputFolder & "\WARN.log", warningMsg)
     End If
-    
+
     If errorMsg <> "" Then
-        Dim errFile As Object
-        Set errFile = fso.CreateTextFile(outputFolder & "\ERROR.log", True, True)
-        errFile.Write errorMsg
-        errFile.Close
+        Call WriteUtf8NoBom(outputFolder & "\ERROR.log", errorMsg)
     End If
     
     Dim summary As String
@@ -482,6 +470,38 @@ Function BuildMySQLType(sqlType As String, fieldLen As String, fieldDec As Strin
         End If
     End If
 End Function
+
+' 文字列をUTF-8（BOMなし）でファイルに書き込む
+' ADODB.Stream を利用し、UTF-8 BOM（EF BB BF）の3バイトをスキップして保存する
+Sub WriteUtf8NoBom(filePath As String, content As String)
+    Dim utfStream As Object
+    Dim binStream As Object
+
+    Set utfStream = CreateObject("ADODB.Stream")
+    utfStream.Type = 2 ' adTypeText
+    utfStream.Mode = 3 ' adModeReadWrite
+    utfStream.Charset = "utf-8"
+    utfStream.Open
+    utfStream.WriteText content
+
+    ' バイナリモードに切り替えてBOMをスキップ
+    utfStream.Position = 0
+    utfStream.Type = 1 ' adTypeBinary
+    utfStream.Position = 3 ' UTF-8 BOM (EF BB BF) をスキップ
+
+    Set binStream = CreateObject("ADODB.Stream")
+    binStream.Type = 1 ' adTypeBinary
+    binStream.Mode = 3
+    binStream.Open
+
+    utfStream.CopyTo binStream
+    binStream.SaveToFile filePath, 2 ' adSaveCreateOverWrite
+
+    binStream.Close
+    utfStream.Close
+    Set binStream = Nothing
+    Set utfStream = Nothing
+End Sub
 
 ' ファイルのSHA-256ハッシュを計算する（Windows標準のcertutilを利用）
 ' 戻り値: 64文字の小文字16進文字列（失敗時は空文字列）
